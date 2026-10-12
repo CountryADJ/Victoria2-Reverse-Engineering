@@ -4,6 +4,11 @@
 (MSVC build, fixed image base, no ASLR). Nothing was run under a debugger yet, so every behavioural claim is
 tagged with how sure we are.
 
+> **Correction (2026-10):** the image base is not fixed. 3.04 has a
+> relocation table and `DYNAMIC_BASE`, and Windows loaded it at `0x00080000` in the measured runs.
+> Listing VAs are still valid for reading code; at runtime use `base + (VA − 0x00400000)`.
+> More on the daily scan below in [Daily scan: call details](#daily-scan-call-details-2026-10).
+
 ## Conventions
 
 | Tag | Meaning |
@@ -600,3 +605,30 @@ Proposed names for functions that still only have an address name:
 | `0x009C1D40` | `ObjectRegistry_HashLookup` |
 | `0x009C16D0` | `ObjectRegistry_FindByTypeAndId` |
 | `0x008E7F80` | `EventEffect_ParseStatement` |
+
+## Daily scan: call details (2026-10)
+
+Checked in the disassembly of `EventManager_DailyScan` (`0x008A7CD0`). **[C]** unless marked.
+
+- Called from `DayTick` at `0x006861E8`; `stdcall`, one argument, `RET 4`.
+- One `CEventScope` lives on its stack (`ESP+0x40`), built with
+  `CEventScope::ctor(scope, FUN_009B7950(0x20, 0))`.
+- Day parity: `days = (date − 0x029C55C0) / 24`; the country pass runs when `days % 2 == 1`.
+- **Country pass:** for `i` in `1 .. count−1`: `c = countries[i]`, `idx = c+0x20`; skipped when `idx == 0`
+  or `countries[idx]` has no provinces. Per country: `scope+0x08 = c+0x1C` (tag), `scope+0x0C = idx`.
+- **Province pass:** province count from `g_provinceSource` (`0x0125870C`) vt `+0x24`; province =
+  `world+0xACC[p]` (world captured at entry), skipped when `+0x12C` (owner) is 0. Per province:
+  `scope+0x10 = p`; `scope+0x08/+0x0C` stay `'---'` / 0.
+- The candidate count is read once per entity, but the vector's begin pointer is **re-read on every
+  iteration** (`MOV EAX,[EDI]`), because `Event_Fire` can change the list.
+- Per candidate: `event+0x30` (`CAndTrigger`) `Evaluate(scope)`; on true,
+  `Event_ComputeMTTHProbability(event+0xC0, scope, mode)` and one Mersenne Twister draw (inlined, it
+  increments `g_rngCalls` `0x00F20C14`); then the fired-once registry check and
+  `Event_Fire(event, param, scope)`: `thiscall`, two stack arguments, `RET 8`, called at `0x008A7EF4`
+  (country pass) and `0x008A80D5` (province pass).
+- `Event_Fire` runs the immediate effects at once, so the game state changes in the middle of the scan;
+  the triggers themselves do not change it.
+- Measured (TGC 1836): ~5 000–6 600 triggers evaluated per day, ~20–40 events fired per 30 days after
+  the first month (~400 in the first 30 days). **[M]** The scan builds its scope once and only rewrites
+  the entity fields; scope copies must relocate the self-pointer `+0x24` (see
+  [triggers-and-scopes.md](triggers-and-scopes.md)).

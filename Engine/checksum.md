@@ -556,6 +556,15 @@ For this executable, the previously established conversion is:
 file offset = VA - 0x00400000
 ```
 
+> **Correction (2026-10):** `VA − 0x00400000` is the **RVA** (what a
+> runtime patcher adds to the module base), not the file offset. In 3.04 the `.text` section starts at
+> RVA `0x1000` and file offset `0x400`, so the **file offset of code is `VA − 0x00400C00`**
+> (`.rdata`: `VA − 0x00401A00`, `.data`: `VA − 0x00402600`). For this site: file offset
+> **`0x001F7668`**, RVA `0x001F8268`. Checked on the 3.04 executable: file offset `0x1F7668` holds the
+> expected `40`; file offset `0x1F8268` holds `FC` (a different instruction), so writing `90` there
+> would corrupt unrelated code. The executable also has a relocation table and `DYNAMIC_BASE`
+> (it was seen loaded at `0x00080000`), so at runtime use `base + RVA`, not the listing VA.
+
 Therefore:
 
 ``` text

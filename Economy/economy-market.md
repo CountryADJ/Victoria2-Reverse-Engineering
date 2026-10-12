@@ -4,6 +4,12 @@
 
 The economic manager is substantially larger than the simple `WorldMarket_Update` path.
 
+> **Correction (2026-10):** `EconomyManager_UpdateFull` (`0068BF00`) does
+> not run during play. Its only caller is `Game_FinalizeLoadAndEnterGameplay` (`0x0066321D`): it is the
+> full rebuild done once after loading (hence its five `Economy_Update(..., 0..4)` passes). The daily
+> path is `DayTick` (`0x00685F7E`) -> `Economy_Update` (`0x00489990`). See
+> [economy-daily-path.md](economy-daily-path.md).
+
 Current consolidated structure:
 
 ```text
@@ -215,6 +221,22 @@ DAT_00E45C28
 ```
 
 These are the preferred patch points because they preserve the upstream supply/demand calculation.
+
+> **Correction (2026-10): the stored doubles are 2^15 fixed point, not
+> 0.2 / 5.0.** `DAT_00E45C30` holds **6554.1** and `DAT_00E45C28` holds **163840.5**. The code converts
+> them to integers and scales by 2^15:
+>
+> ```asm
+> 00482c46  FLD   double ptr [0x00e45c30]   ; 6554.1
+> 00482c90  CALL  0x00b31c36                ; double -> int64, truncates: 6554
+> 00482c9c  CALL  0x00ac9f20                ; __allmul: base price * 6554
+> 00482ca9  SHRD  EAX,EBX,0xf / SAR EBX,0xf ; >> 15  ->  base * 0.2
+> 00482ca1  FLD   double ptr [0x00e45c28]   ; 163840.5 -> 163840 -> base * 5.0
+> ```
+>
+> So ×0.1 / ×10.0 means writing **3277.3** / **327680.5**; writing 0.1 / 10.0 directly makes both bounds
+> ~0 (32768 times too small). The same scale applies to the cap in `Patch/PATCHES.md`
+> (`PATCH_MAX_RELATIVE_PRICE`): 655360.0 / 32768 = **×20**, not ×40.
 
 
 # MAP 18 — MARKET DEMAND AGGREGATION
@@ -828,6 +850,12 @@ The exact worker body remains to be identified.
 
 
 # MAP 27 — ECONOMIC PERIODIC TICK
+
+> **Correction (2026-10):** `FUN_006859C0` is the **daily** tick
+> (`DayTick`): `Update_World_and_Advance_Time` adds 24 hours to the date and calls it once
+> (`0x00683AB1`), on every game day. It runs provinces, `Country_PrePass`, `Economy_Update`,
+> `Country_DailyUpdate` for every country and the event scan. See
+> [../Engine/daily-tick.md](../Engine/daily-tick.md).
 
 ## `FUN_006859C0`
 
