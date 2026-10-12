@@ -103,6 +103,11 @@ Caves in use: `0x00C89120–0x00C89161` and `0x00C89170–0x00C891B1`. Free (to 
 - Their "Country_DailyUpdate" is `FUN_005091A0` (2 arguments: country and random-number array; `RET 8`).
 - `Economy_ProcessMonthlyTick` is **not** monthly: it is the world's daily tick.
 - Launcher conversion: `VA − 0x00400000` is the convention the user uses; their example `00C8911A → 0x88851A` is incorrectly calculated: `0x00C8911A − 0x00400000 = 0x0088911A`. The other two examples (`0x285EB2`, `0x285ED1`) are correct. Earlier `VA − 0x00400C00` was given; the PE section table should be checked to confirm which convention applies to the actual EXE.
+  - **Resolved (2026-10):** both are right for different things.
+    `VA − 0x00400000` is the RVA, which a launcher/runtime patcher adds to the module base (the exe has
+    `DYNAMIC_BASE` and was seen at `0x00080000`, so use the real base). `VA − 0x00400C00` is the **file
+    offset** of code (`.text`: RVA `0x1000`, file `0x400`); `.rdata` is `VA − 0x00401A00`, `.data`
+    `VA − 0x00402600`.
 
 ## 8. Warning: skipping every other day changes the simulation
 

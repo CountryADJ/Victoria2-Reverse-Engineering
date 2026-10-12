@@ -884,3 +884,28 @@ NOPs at 00682D0C
 ```
 
 must be considered experimental patches, not vanilla behavior.
+
+
+# MAP 11 — WHY MAX SPEED RENDERS AT ~20 FPS (2026-10)
+
+At the fastest speed the `FUN_00682BD0` threshold is 0.0004 s, so a new day starts on practically every
+frame and the game spends almost all its time inside the daily tick. During a tick, the only frames drawn
+are the ones `UpdateTimeThrottle` (`0x00685620`, ~1400 calls a day from 14 sites in `DayTick`,
+`Economy_Update` and `WorldMarketUpdate`) allows: one every
+
+```text
+DAT_00F0956C[speed] * g_throttleScale (0x013F2AE8) * (g_timeFactor + 1.0)  seconds
+```
+
+which is **at least 0.06 s at the fastest speed, i.e. ~16–20 fps on any hardware** (0.03 s, ~33 fps, at
+speeds 0–2; 0.04 s, ~25 fps, at speed 3). When the game falls behind the date, `g_timeFactor` grows and
+the interval gets longer. The low frame rate at max speed is therefore by design, not a performance
+problem of the machine.
+
+- `DAT_00F0956C` is read only by `UpdateTimeThrottle` (single data reference, at `0x00685691`), so
+  changing entry 4 has no other effect. `g_throttleScale` is written once, lazily, from
+  `FUN_00475500()+0x178`.
+- The trade-off: each extra frame costs a render and UI pass (~4–5 ms in 1836–1850 TGC), so ~30 fps at
+  max speed costs ~10 ms per game day and ~60 fps ~25 ms (estimates).
+- A day also spans several *regular* frames because of the AI queue (see
+  [daily-tick.md](daily-tick.md#frames-per-day-the-ai-job-queue)).
